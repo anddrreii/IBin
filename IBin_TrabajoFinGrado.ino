@@ -3,9 +3,9 @@
  * FUNCIONALIDAD: Apertura PIR, Nivel por Ultrasonido, Semáforo LED y App Blynk.
  */
 
-#define BLYNK_TEMPLATE_ID "TMPL5apTqd71X"
-#define BLYNK_TEMPLATE_NAME "IBInTFG"
-#define BLYNK_AUTH_TOKEN "kenBDqkYKFrQWKsPGHyzbpPgH1HPtdEv"
+#define BLYNK_TEMPLATE_ID "TU_TEMPLATE_ID"
+#define BLYNK_TEMPLATE_NAME "TU_TEMPLATE_NAME"
+#define BLYNK_AUTH_TOKEN "TU_AUTH_TOKEN"
 
 #include <WiFi.h>
 #include <BlynkSimpleEsp32.h>
@@ -13,9 +13,9 @@
 #include <Adafruit_NeoPixel.h>
 
 // Credenciales
-char auth[] = "kenBDqkYKFrQWKsPGHyzbpPgH1HPtdEv";
-char ssid[] = "andrei"; 
-char pass[] = "andrei123";
+char auth[] = "TU_AUTH_TOKEN";
+char ssid[] = "TU_SSID"; 
+char pass[] = "TU_PASSWD";
 
 // Configuración Pins
 #define PIN_LEDS 14
