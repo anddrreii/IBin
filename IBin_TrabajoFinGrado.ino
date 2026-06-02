@@ -1,131 +1,249 @@
-/*
- * PROYECTO: IBin Smart Bin - TFG SMR
- * FUNCIONALIDAD: Apertura PIR, Nivel por Ultrasonido, Semáforo LED y App Blynk.
- */
-
-#define BLYNK_TEMPLATE_ID "TU_TEMPLATE_ID"
-#define BLYNK_TEMPLATE_NAME "TU_TEMPLATE_NAME"
-#define BLYNK_AUTH_TOKEN "TU_AUTH_TOKEN"
+#define BLYNK_TEMPLATE_ID "TEMPLATE_ID"
+#define BLYNK_TEMPLATE_NAME "IBin"
+#define BLYNK_AUTH_TOKEN "AUTH_TOKEN"
 
 #include <WiFi.h>
+#include <WiFiClient.h>
 #include <BlynkSimpleEsp32.h>
-#include <ESP32Servo.h>
-#include <Adafruit_NeoPixel.h>
+#include <Stepper.h>
 
-// Credenciales
-char auth[] = "TU_AUTH_TOKEN";
-char ssid[] = "TU_SSID"; 
-char pass[] = "TU_PASSWD";
+char ssid[] = "SSID_NAME";
+char pass[] = "PASSWD";
 
-// Configuración Pins
-#define PIN_LEDS 14
-#define NUM_LEDS 10
-#define PIN_PIR  27
-#define PIN_SERVO 13
-#define PIN_TRIG 5
-#define PIN_ECHO 18
+// MOTOR
+const int pasosPorVuelta = 2048;
+Stepper motor(pasosPorVuelta, 13, 14, 12, 27);
 
-// Objetos
-Adafruit_NeoPixel tira(NUM_LEDS, PIN_LEDS, NEO_GRB + NEO_KHZ800);
-Servo miServo;
-BlynkTimer timer;
+// PINES SENSORES Y LEDS
+const int PIR          = 26;
+const int TRIG         = 5;
+const int ECHO         = 18;
+const int LED_VERDE    = 17;
+const int LED_NARANJA  = 16;
+const int LED_ROJO     = 19;
 
-// Variables Globales
-bool tapaAbierta = false;
-bool bloqueoBlynk = false; // Controlado por V3
-float distanciaActual = 0;
-int porcentajeLlenado = 0;
-const int ALTURA_PAPELERA = 25; // cm (ajusta según tu bote)
+// TIEMPOS
+const unsigned long TIEMPO_ABIERTO     = 10000;
+const unsigned long TIEMPO_AVISO       = 5000;
+const unsigned long INTERVALO_SENSOR   = 1000;
+const unsigned long INTERVALO_PARPADEO = 300;
 
-// Función: Colores del Semáforo (4V, 3N, 3R) - INVERTIDA
-void mostrarSemaforo() {
-  tira.clear();
-  for (int i = 0; i < NUM_LEDS; i++) {
-    uint32_t color = tira.Color(0, 0, 0); // Color temporal apagado
+// ESTADO
+enum Estado { IDLE, ABIERTO, AVISANDO, CERRANDO };
+Estado estadoActual = IDLE;
 
-    // Determinamos qué color le toca al índice 'i'
-    if (distanciaActual > 18) { // Estado VACÍO
-      if (i < 4) color = tira.Color(0, 255, 0); 
-    } else if (distanciaActual > 10) { // Estado MEDIO
-      if (i < 4) color = tira.Color(0, 255, 0);
-      if (i >= 4 && i < 7) color = tira.Color(255, 100, 0);
-    } else { // Estado LLENO
-      if (i < 4) color = tira.Color(0, 255, 0);
-      if (i >= 4 && i < 7) color = tira.Color(255, 100, 0);
-      if (i >= 7) color = tira.Color(255, 0, 0);
+bool pirPreparado  = false;
+int  pirAnterior   = LOW;
+float distancia    = 999;
+bool modoNoche     = false;   // ← controlado por V2
+
+unsigned long tiempoApertura = 0;
+unsigned long tiempoParpadeo = 0;
+unsigned long tiempoSensor   = 0;
+int  contParpadeo = 0;
+bool estadoLED    = false;
+
+// ── Blynk V2 - switch modo noche ──
+BLYNK_WRITE(V2) {
+  modoNoche = param.asInt();   // 1 = noche activado, 0 = desactivado
+  Serial.print("Modo noche: ");
+  Serial.println(modoNoche ? "ACTIVADO" : "DESACTIVADO");
+
+  if (modoNoche) {
+    apagarLEDs();
+    Serial.println("TAPA BLOQUEADA - modo noche");
+  } else {
+    ledNivel(distancia);
+    Serial.println("TAPA DESBLOQUEADA");
+  }
+}
+
+// ── Motor ──
+void bajar() {
+  Serial.println("BAJANDO");
+  motor.step(-700);
+}
+
+void subir() {
+  Serial.println("SUBIENDO");
+  motor.step(600);
+}
+
+// ── Sensor distancia con media de 5 lecturas ──
+float medirDistancia() {
+  float suma = 0;
+  int validas = 0;
+
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG, LOW);
+
+    long duracion = pulseIn(ECHO, HIGH, 15000);
+
+    if (duracion > 0) {
+      float d = duracion * 0.0343 / 2.0;
+      if (d > 1 && d < 40) {
+        suma += d;
+        validas++;
+      }
     }
-    
-    // Aplicamos la inversión: el índice 0 se dibuja en el LED 9
-    tira.setPixelColor(9 - i, color); 
+    delay(20);
   }
-  tira.show();
+
+  if (validas == 0) return 999;
+  return suma / validas;
 }
 
-// Función: Parpadeo de Alerta (Últimos 3 segundos)
-void parpadearAlerta() {
-  for (int j = 0; j < 3; j++) { 
-    tira.clear();
-    tira.show();
-    delay(500);
-    mostrarSemaforo();
-    delay(500);
-  }
+// ── LEDs ──
+void apagarLEDs() {
+  digitalWrite(LED_VERDE,   LOW);
+  digitalWrite(LED_NARANJA, LOW);
+  digitalWrite(LED_ROJO,    LOW);
 }
 
-// Medición de nivel y envío a Blynk
-void medirNivel() {
-  digitalWrite(PIN_TRIG, LOW); delayMicroseconds(2);
-  digitalWrite(PIN_TRIG, HIGH); delayMicroseconds(10);
-  digitalWrite(PIN_TRIG, LOW);
-  
-  long duracion = pulseIn(PIN_ECHO, HIGH);
-  distanciaActual = duracion * 0.034 / 2;
-
-  porcentajeLlenado = map(constrain(distanciaActual, 5, ALTURA_PAPELERA), 5, ALTURA_PAPELERA, 100, 0);
-  
-  Blynk.virtualWrite(V1, porcentajeLlenado); 
-  if (!tapaAbierta) mostrarSemaforo();
+void todasLEDs(bool estado) {
+  digitalWrite(LED_VERDE,   estado);
+  digitalWrite(LED_NARANJA, estado);
+  digitalWrite(LED_ROJO,    estado);
 }
 
-// Lógica de apertura
-void gestionarApertura() {
-  if (digitalRead(PIN_PIR) == HIGH && !tapaAbierta && !bloqueoBlynk) {
-    tapaAbierta = true;
-    Blynk.virtualWrite(V2, 1); 
-    
-    miServo.write(55); // Posición 55 para recorrido de 35 grados
-    delay(3000);       
-    
-    parpadearAlerta(); 
-    
-    miServo.write(90); // Vuelve a reposo (cerrado)
-    tapaAbierta = false;
-    Blynk.virtualWrite(V2, 0);
-  }
+void ledNivel(float d) {
+  apagarLEDs();
+  if      (d > 15) digitalWrite(LED_VERDE,   HIGH);
+  else if (d > 5)  digitalWrite(LED_NARANJA, HIGH);
+  else             digitalWrite(LED_ROJO,    HIGH);
 }
 
-BLYNK_WRITE(V3) {
-  bloqueoBlynk = param.asInt(); 
+// ── Blynk ──
+int nivelPorDistancia(float d) {
+  if (d >= 15) return 0;
+  if (d <= 5)  return 100;
+  int nivel = map(d * 10, 150, 50, 0, 100);
+  return constrain(nivel, 0, 100);
 }
 
+void enviarBlynk(float d) {
+  Blynk.virtualWrite(V0, nivelPorDistancia(d));           // nivel en %
+  Blynk.virtualWrite(V1, estadoActual == IDLE ? 0 : 1);  // tapa 0=cerrada 1=abierta
+}
+
+// ── Setup ──
 void setup() {
   Serial.begin(115200);
-  tira.begin();
-  tira.setBrightness(150); 
-  
-  miServo.attach(PIN_SERVO);
-  miServo.write(90); 
-  
-  pinMode(PIN_PIR, INPUT);
-  pinMode(PIN_TRIG, OUTPUT);
-  pinMode(PIN_ECHO, INPUT);
 
-  Blynk.begin(auth, ssid, pass);
-  timer.setInterval(2000L, medirNivel); 
+  pinMode(PIR,         INPUT);
+  pinMode(TRIG,        OUTPUT);
+  pinMode(ECHO,        INPUT);
+  pinMode(LED_VERDE,   OUTPUT);
+  pinMode(LED_NARANJA, OUTPUT);
+  pinMode(LED_ROJO,    OUTPUT);
+
+  motor.setSpeed(5);
+  apagarLEDs();
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+  Serial.println("Calibrando PIR...");
+  unsigned long t = millis();
+  while (millis() - t < 5000) Blynk.run();
+  Serial.println("Sistema listo");
+
+  distancia = medirDistancia();
+  ledNivel(distancia);
+  enviarBlynk(distancia);
 }
 
+// ── Loop ──
 void loop() {
   Blynk.run();
-  timer.run();
-  gestionarApertura();
+
+  unsigned long ahora = millis();
+
+  // Medir distancia cada 1 segundo
+  if (ahora - tiempoSensor >= INTERVALO_SENSOR) {
+    tiempoSensor = ahora;
+    distancia = medirDistancia();
+    Serial.print("Distancia: "); Serial.print(distancia); Serial.println(" cm");
+    if (estadoActual == IDLE && !modoNoche) {
+      ledNivel(distancia);
+      enviarBlynk(distancia);
+    }
+  }
+
+  // Leer PIR
+  int pirActual = digitalRead(PIR);
+  if (pirActual == LOW) pirPreparado = true;
+
+  // Detectar movimiento
+  if (estadoActual == IDLE &&
+      pirPreparado  &&
+      pirActual == HIGH &&
+      pirAnterior == LOW) {
+
+    if (modoNoche) {
+      // Modo noche activo — tapa bloqueada
+      Serial.println("MODO NOCHE - tapa bloqueada");
+      apagarLEDs();
+
+    } else if (distancia <= 5) {
+      // Papelera llena — tapa bloqueada
+      Serial.println("PAPELERA LLENA - bloqueada");
+      apagarLEDs();
+      digitalWrite(LED_ROJO, HIGH);
+      enviarBlynk(distancia);
+
+    } else {
+      // Abrir normal
+      Serial.println("ABRIENDO");
+      todasLEDs(true);
+      bajar();
+      estadoActual   = ABIERTO;
+      tiempoApertura = millis();
+      pirPreparado   = false;
+      apagarLEDs();
+      Blynk.virtualWrite(V1, 1);
+    }
+  }
+
+  pirAnterior = pirActual;
+
+  // A los 5 segundos aviso
+  if (estadoActual == ABIERTO &&
+      millis() - tiempoApertura >= TIEMPO_AVISO) {
+    estadoActual   = AVISANDO;
+    contParpadeo   = 0;
+    estadoLED      = false;
+    tiempoParpadeo = millis();
+    Serial.println("AVISO - cerrando en 5 segundos");
+  }
+
+  // Parpadeo aviso
+  if (estadoActual == AVISANDO) {
+    if (millis() - tiempoParpadeo >= INTERVALO_PARPADEO) {
+      tiempoParpadeo = millis();
+      estadoLED = !estadoLED;
+      todasLEDs(estadoLED);
+      contParpadeo++;
+    }
+    if (millis() - tiempoApertura >= TIEMPO_ABIERTO) {
+      estadoActual = CERRANDO;
+    }
+  }
+
+  // Cerrar
+  if (estadoActual == CERRANDO) {
+    Serial.println("CERRANDO");
+    apagarLEDs();
+    subir();
+    distancia = medirDistancia();
+    if (!modoNoche) ledNivel(distancia);
+    enviarBlynk(distancia);
+    Blynk.virtualWrite(V1, 0);
+    estadoActual = IDLE;
+    pirPreparado = false;
+    Serial.println("CERRADA - standby");
+  }
 }
