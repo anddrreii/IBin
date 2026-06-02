@@ -8,7 +8,7 @@ IBin es un proyecto intermodular desarrollado para el ciclo de Sistemas Microinf
 
 - **Apertura Touchless:** Apertura automática de la tapa mediante un sensor de presencia PIR para evitar el contacto físico.
 - **Monitoreo de Nivel:** Medición en tiempo real del llenado mediante un sensor de ultrasonidos.
-- **Interfaz Visual LED:** Tres diodos LED discretos (verde, naranja y rojo) con resistencias de 330 Ω que actúan como semáforo indicando la capacidad disponible.
+- **Interfaz Visual LED:** Tres diodos LED (verde, naranja y rojo)  que actúan como semáforo indicando la capacidad disponible.
 - **Conectividad Cloud:** Integración con la plataforma Blynk para supervisión remota desde dispositivos móviles.
 - **Modo Noche:** Configuración remota para desactivar la apertura automática durante horarios específicos.
 
@@ -22,7 +22,7 @@ IBin es un proyecto intermodular desarrollado para el ciclo de Sistemas Microinf
 | HC-SR04 | Sensor de ultrasonidos para medir el nivel de llenado. |
 | HC-SR501 (PIR) | Sensor infrarrojo para detectar movimiento y presencia. |
 | Motor 28BYJ-48 + Driver ULN2003 | Actuador para el mecanismo de apertura de la tapa mediante hilo de pesca. |
-| LEDs discretos 5 mm (x3) + resistencias 330 Ω | Interfaz visual tipo semáforo (verde, naranja, rojo). |
+| LEDs discretos (x3)  | Interfaz visual tipo semáforo (verde, naranja, rojo). |
 | Protoboard | Distribución central de alimentación para todos los componentes. |
 | Fuente 5V / 2A | Alimentación estable del sistema. |
 
@@ -60,9 +60,9 @@ El motor paso a paso 28BYJ-48 lleva unido un soporte en su eje. A ese soporte se
 | Motor ULN2003 IN2 | GPIO 12 |
 | Motor ULN2003 IN3 | GPIO 26 |
 | Motor ULN2003 IN4 | GPIO 25 |
-| LED verde (+ 330 Ω) | GPIO 14 |
-| LED naranja (+ 330 Ω) | GPIO 25 |
-| LED rojo (+ 330 Ω) | GPIO 26 |
+| LED verde | GPIO 14 |
+| LED naranja | GPIO 25 |
+| LED rojo | GPIO 26 |
 | VCC (todos) | VIN / 5V (protoboard) |
 | GND (todos) | GND (protoboard) |
 
