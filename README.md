@@ -23,7 +23,7 @@ IBin es un proyecto intermodular desarrollado para el ciclo de Sistemas Microinf
 | HC-SR04 | Sensor de ultrasonidos para medir el nivel de llenado. |
 | HC-SR501 (PIR) | Sensor infrarrojo para detectar movimiento y presencia. |
 | Motor 28BYJ-48 + Driver ULN2003 | Actuador para el mecanismo de apertura de la tapa mediante hilo de pesca. |
-| LEDs discretos (x3) | Interfaz visual tipo semáforo (verde, naranja, rojo). |
+| LEDs (x3) | Interfaz visual tipo semáforo (verde, naranja, rojo). |
 | Protoboard | Distribución central de alimentación para todos los componentes. |
 | Fuente 5V / 2A | Alimentación estable del sistema. |
 
